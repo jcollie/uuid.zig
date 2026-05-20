@@ -39,7 +39,7 @@ steps:
         IdentityFile /tangled/home/ssh/github_deploy_key
         UserKnownHostsFile /tangled/home/ssh/github_known_hosts
       EOF
-      chmod 0600 /tangled/home/ssh
+      chmod 0600 /tangled/home/ssh/config
       git config --global core.sshCommand "ssh -F /tangled/home/ssh/config"
 
   - name: Push to GitHub
