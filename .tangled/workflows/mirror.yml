@@ -42,11 +42,10 @@ steps:
         IdentityFile /tangled/home/.ssh/github_deploy_key
       EOF
       chmod 0600 /tangled/home/.ssh/config
-      git config --global core.sshCommand "ssh -v"
 
   - name: Push to GitHub
     command: |
-      git fetch --depth=1 origin main
+      git fetch origin main
       git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
       git push --force github main
