@@ -65,6 +65,13 @@ pub const UUID = packed union {
             high: u12,
         },
 
+        /// Split the timestamp in the order needed for v2 UUIDs
+        v2: packed struct(u60) {
+            low: u32,
+            mid: u16,
+            high: u12,
+        },
+
         /// Split the timestamp in the order needed for v6 UUIDs
         v6: packed struct(u60) {
             low: u12,
@@ -74,18 +81,18 @@ pub const UUID = packed union {
 
         test "v1v6Time 1" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv1-value
-            const t: v1v6Time = .{ .raw = 0x1EC9414C232AB00 };
-            try std.testing.expectEqual(0xC232AB00, t.v1.low);
+            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            try std.testing.expectEqual(0xc232ab00, t.v1.low);
             try std.testing.expectEqual(0x9414, t.v1.mid);
-            try std.testing.expectEqual(0x1EC, t.v1.high);
+            try std.testing.expectEqual(0x1ec, t.v1.high);
         }
 
         test "v1v6Time 2" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv1-value
-            const t: v1v6Time = .{ .raw = 0x1EC9414C232AB00 };
-            try std.testing.expectEqual(0x1EC9414C, t.v6.high);
-            try std.testing.expectEqual(0x232A, t.v6.mid);
-            try std.testing.expectEqual(0xB00, t.v6.low);
+            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            try std.testing.expectEqual(0x1ec9414c, t.v6.high);
+            try std.testing.expectEqual(0x232a, t.v6.mid);
+            try std.testing.expectEqual(0xb00, t.v6.low);
         }
 
         // The number of 100-nanosecond intervals from the UUID epoch
@@ -106,8 +113,8 @@ pub const UUID = packed union {
 
         test "fromNanoTimestamp" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-test-vectors
-            const t = fromNanoTimestamp(0x16D6320C3D4DCC00);
-            try std.testing.expectEqual(0x1EC9414C232AB00, t.raw);
+            const t = fromNanoTimestamp(0x16d6320c3d4dcc00);
+            try std.testing.expectEqual(0x1ec9414c232ab00, t.raw);
         }
 
         /// Return the Unix epoch nanosecond timestamp that corresponds to our
@@ -118,16 +125,15 @@ pub const UUID = packed union {
 
         test "toNanoTimestamp" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-test-vectors
-            const t: v1v6Time = .{ .raw = 0x1EC9414C232AB00 };
-            try std.testing.expectEqual(0x16D6320C3D4DCC00, t.toNanoTimeStamp());
+            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            try std.testing.expectEqual(0x16d6320c3d4dcc00, t.toNanoTimeStamp());
         }
     };
 
     pub const NewOptions = union(Version) {
         v1: struct {
             /// The time in 100-nanosecond intervals since the UUID epoch, which
-            /// is 1582-10-15 00:00:00. If this is left null the current time
-            /// will be used.
+            /// is 1582-10-15 00:00:00.
             time: v1v6Time,
             clock_seq: union(enum) {
                 raw: u14,
@@ -307,12 +313,34 @@ pub const UUID = packed union {
         custom_a: u48,
     },
 
+    /// The `nil` UUID is special form of UUID that is specified to have all 128
+    /// bits set to zero.
+    ///
+    /// 00000000-0000-0000-0000-000000000000
+    ///
+    /// A `nil` UUID value can be useful to communicate the absence of any other
+    /// UUID value in situations that otherwise require or use a 128-bit UUID.
+    /// A `nil` UUID can express the concept "no such value here". Thus, it is
+    /// reserved for such use as needed for implementation-specific situations.
+    ///
     /// https://www.rfc-editor.org/rfc/rfc9562.html#name-nil-uuid
     pub const nil: UUID = .{ .id = 0 };
 
+    /// The `max` UUID is a special form of UUID that is specified to have all
+    /// 128 bits set to 1. This UUID can be thought of as the inverse of the
+    /// `nil` UUID.
+    ///
+    /// FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF
+    ///
+    /// A `max` UUID value can be used as a sentinel value in situations
+    /// where a 128-bit UUID is required, but a concept such as "end of UUID
+    /// list" needs to be expressed and is reserved for such use as needed for
+    /// implementation-specific situations.
+    ///
     /// https://www.rfc-editor.org/rfc/rfc9562.html#name-max-uuid
     pub const max: UUID = .{ .id = std.math.maxInt(u128) };
 
+    /// Create a new UUID with the given options.
     pub fn new(options: NewOptions) UUID {
         switch (options) {
             .v1 => |v| {
@@ -416,14 +444,8 @@ pub const UUID = packed union {
         var buf: [36]u8 = undefined;
         _ = std.fmt.bufPrint(
             &buf,
-            "{x:0>8}-{x:0>4}-{x:0>4}-{x:0>4}-{x:0>12}",
-            .{
-                self.serializable.a,
-                self.serializable.b,
-                self.serializable.c,
-                self.serializable.d,
-                self.serializable.e,
-            },
+            "{[a]x:0>8}-{[b]x:0>4}-{[c]x:0>4}-{[d]x:0>4}-{[e]x:0>12}",
+            self.serializable,
         ) catch unreachable;
         return buf;
     }
@@ -432,14 +454,8 @@ pub const UUID = packed union {
         var buf: [36:sentinel]u8 = undefined;
         _ = std.fmt.bufPrint(
             &buf,
-            "{x:0>8}-{x:0>4}-{x:0>4}-{x:0>4}-{x:0>12}",
-            .{
-                self.serializable.a,
-                self.serializable.b,
-                self.serializable.c,
-                self.serializable.d,
-                self.serializable.e,
-            },
+            "{[a]x:0>8}-{[b]x:0>4}-{[c]x:0>4}-{[d]x:0>4}-{[e]x:0>12}",
+            self.serializable,
         ) catch unreachable;
         buf[buf.len] = sentinel;
         return buf;

@@ -13,26 +13,62 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const mod_tests = b.addTest(.{
-        .root_module = mod,
+    const exe = b.addExecutable(.{
+        .name = "uuidgen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{
+                    .name = "uuid",
+                    .module = mod,
+                },
+            },
+        }),
+        .use_lld = false,
+        .use_llvm = false,
     });
 
-    const run_mod_tests = b.addRunArtifact(mod_tests);
+    b.installArtifact(exe);
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
+    {
+        const run_step = b.step("run", "Run the app");
 
-    const lib = b.addLibrary(.{
-        .name = "uuid",
-        .root_module = mod,
-    });
+        const run_cmd = b.addRunArtifact(exe);
+        run_step.dependOn(&run_cmd.step);
 
-    const install_docs = b.addInstallDirectory(.{
-        .source_dir = lib.getEmittedDocs(),
-        .install_dir = .prefix,
-        .install_subdir = "docs",
-    });
+        run_cmd.step.dependOn(b.getInstallStep());
 
-    const docs_step = b.step("docs", "Build the API docs");
-    docs_step.dependOn(&install_docs.step);
+        if (b.args) |args| {
+            run_cmd.addArgs(args);
+        }
+    }
+
+    {
+        const mod_tests = b.addTest(.{
+            .root_module = mod,
+        });
+
+        const run_mod_tests = b.addRunArtifact(mod_tests);
+
+        const test_step = b.step("test", "Run tests");
+        test_step.dependOn(&run_mod_tests.step);
+    }
+
+    {
+        const lib = b.addLibrary(.{
+            .name = "uuid",
+            .root_module = mod,
+        });
+
+        const install_docs = b.addInstallDirectory(.{
+            .source_dir = lib.getEmittedDocs(),
+            .install_dir = .prefix,
+            .install_subdir = "docs",
+        });
+
+        const docs_step = b.step("docs", "Build the API docs");
+        docs_step.dependOn(&install_docs.step);
+    }
 }
