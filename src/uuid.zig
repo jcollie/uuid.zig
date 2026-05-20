@@ -52,7 +52,7 @@ pub const UUID = packed union {
     };
 
     /// Timestamps as used by v1 and v6 UUIDs
-    const v1v6Time = packed union {
+    const Time = packed union {
         /// The number of 100-nanosecond intervals since the beginning of the
         /// UUID epoch, which is 1582-10-15 00:00:00 (the date of the Gregorian
         /// reform to the Christian calendar).
@@ -79,35 +79,35 @@ pub const UUID = packed union {
             high: u32,
         },
 
-        test "v1v6Time 1" {
+        test "Time 1" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv1-value
-            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            const t: Time = .{ .raw = 0x1ec9414c232ab00 };
             try std.testing.expectEqual(0xc232ab00, t.v1.low);
             try std.testing.expectEqual(0x9414, t.v1.mid);
             try std.testing.expectEqual(0x1ec, t.v1.high);
         }
 
-        test "v1v6Time 2" {
+        test "Time 2" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv1-value
-            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            const t: Time = .{ .raw = 0x1ec9414c232ab00 };
             try std.testing.expectEqual(0x1ec9414c, t.v6.high);
             try std.testing.expectEqual(0x232a, t.v6.mid);
             try std.testing.expectEqual(0xb00, t.v6.low);
         }
 
-        // The number of 100-nanosecond intervals from the UUID epoch
-        // (1582-10-15 00:00:00) until the Unix epoch (1970-01-01 00:00:00).
-        const uuid_epoch_offset = 0x01b21dd213814000;
+        /// The number of 100-nanosecond intervals from the UUID epoch
+        /// (1582-10-15 00:00:00) until the Unix epoch (1970-01-01 00:00:00).
+        pub const uuid_epoch_offset = 0x01b21dd213814000;
 
         /// Return the current UUID epoch timestamp.
-        pub fn now(io: std.Io) v1v6Time {
+        pub fn now(io: std.Io) Time {
             const ts: std.Io.Timestamp = .now(io, .real);
             return .{ .raw = @intCast(@divFloor(ts.toNanoseconds(), 100) + uuid_epoch_offset) };
         }
 
         /// Return the UUID epoch timestamp that corresponds to the given Unix
         /// epoch nanosecond timestamp.
-        pub fn fromNanoTimestamp(time: i128) v1v6Time {
+        pub fn fromNanoTimestamp(time: i128) Time {
             return .{ .raw = @intCast(@divFloor(time, 100) + uuid_epoch_offset) };
         }
 
@@ -119,13 +119,13 @@ pub const UUID = packed union {
 
         /// Return the Unix epoch nanosecond timestamp that corresponds to our
         /// UUID epoch timestamp.
-        pub fn toNanoTimeStamp(self: v1v6Time) i128 {
+        pub fn toNanoTimeStamp(self: Time) i128 {
             return (@as(i128, @intCast(self.raw)) - uuid_epoch_offset) * 100;
         }
 
         test "toNanoTimestamp" {
             // https://www.rfc-editor.org/rfc/rfc9562.html#name-test-vectors
-            const t: v1v6Time = .{ .raw = 0x1ec9414c232ab00 };
+            const t: Time = .{ .raw = 0x1ec9414c232ab00 };
             try std.testing.expectEqual(0x16d6320c3d4dcc00, t.toNanoTimeStamp());
         }
     };
@@ -134,7 +134,7 @@ pub const UUID = packed union {
         v1: struct {
             /// The time in 100-nanosecond intervals since the UUID epoch, which
             /// is 1582-10-15 00:00:00.
-            time: v1v6Time,
+            time: Time,
             clock_seq: union(enum) {
                 raw: u14,
                 random: std.Random,
@@ -178,7 +178,7 @@ pub const UUID = packed union {
         v6: struct {
             /// The time in 100-nanosecond intervals since the UUID epoch, which
             /// is 1582-10-15 00:00:00.
-            time: v1v6Time,
+            time: Time,
             clock_seq: union(enum) {
                 raw: u14,
                 random: std.Random,
