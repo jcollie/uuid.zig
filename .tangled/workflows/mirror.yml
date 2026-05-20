@@ -42,7 +42,7 @@ steps:
         IdentityFile /tangled/home/.ssh/github_deploy_key
       EOF
       chmod 0600 /tangled/home/.ssh/config
-      git config --global core.sshCommand "ssh -v"
+      git config --global core.sshCommand "ssh -v -i /tangled/home/.ssh/github_deploy_key"
 
   - name: Push to GitHub
     command: |
