@@ -49,4 +49,4 @@ steps:
       git fetch --depth=1 origin main
       git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
-      git push github main
+      git push --force github main
