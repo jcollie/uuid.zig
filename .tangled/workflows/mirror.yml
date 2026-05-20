@@ -21,7 +21,7 @@ environment:
 
 steps:
   - name: Fix root user
-    command: echo "root:x:0:0:root:/root:/bin/sh" >> /etc/passwd
+    command: echo "root:x:0:0:root:/tangled/home:/bin/sh" >> /etc/passwd
 
   - name: Configure SSH
     command: |
