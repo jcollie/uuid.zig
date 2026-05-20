@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: © 2025 Jeffrey C. Ollie
+// SPDX-License-Identifier: MIT
+
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
@@ -18,4 +21,18 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
+
+    const lib = b.addLibrary(.{
+        .name = "uuid",
+        .root_module = mod,
+    });
+
+    const install_docs = b.addInstallDirectory(.{
+        .source_dir = lib.getEmittedDocs(),
+        .install_dir = .prefix,
+        .install_subdir = "docs",
+    });
+
+    const docs_step = b.step("docs", "Build the API docs");
+    docs_step.dependOn(&install_docs.step);
 }

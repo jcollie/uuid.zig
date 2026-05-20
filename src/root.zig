@@ -1,5 +1,6 @@
-//! © 2025 Jeffrey C. Ollie
-//!
+// SPDX-FileCopyrightText: © 2025 Jeffrey C. Ollie
+// SPDX-License-Identifier: MIT
+
 const std = @import("std");
 
 const assert = std.debug.assert;
@@ -92,8 +93,9 @@ pub const UUID = packed union {
         const uuid_epoch_offset = 0x01b21dd213814000;
 
         /// Return the current UUID epoch timestamp.
-        pub fn now() v1v6Time {
-            return .{ .raw = @intCast(@divFloor(std.time.nanoTimestamp(), 100) + uuid_epoch_offset) };
+        pub fn now(io: std.Io) v1v6Time {
+            const ts: std.Io.Timestamp = .now(io, .real);
+            return .{ .raw = @intCast(@divFloor(ts.toNanoseconds(), 100) + uuid_epoch_offset) };
         }
 
         /// Return the UUID epoch timestamp that corresponds to the given Unix
@@ -126,9 +128,15 @@ pub const UUID = packed union {
             /// The time in 100-nanosecond intervals since the UUID epoch, which
             /// is 1582-10-15 00:00:00. If this is left null the current time
             /// will be used.
-            time: ?v1v6Time = null,
-            clock_seq: ?u14 = null,
-            node: ?u48 = null,
+            time: v1v6Time,
+            clock_seq: union(enum) {
+                raw: u14,
+                random: std.Random,
+            },
+            node: union(enum) {
+                raw: u48,
+                random: std.Random,
+            },
         },
         v2,
         v3: struct {
@@ -144,7 +152,9 @@ pub const UUID = packed union {
                 return @bitCast(std.mem.readInt(u128, self.hash, .big));
             }
         },
-        v4,
+        v4: struct {
+            rng: std.Random,
+        },
         v5: struct {
             hash: *const [std.crypto.hash.Sha1.digest_length]u8,
 
@@ -161,18 +171,27 @@ pub const UUID = packed union {
         },
         v6: struct {
             /// The time in 100-nanosecond intervals since the UUID epoch, which
-            /// is 1582-10-15 00:00:00. If this is left null the current time
-            /// will be used.
-            time: ?v1v6Time = null,
-            clock_seq: ?u14 = null,
-            node: ?u48 = null,
+            /// is 1582-10-15 00:00:00.
+            time: v1v6Time,
+            clock_seq: union(enum) {
+                raw: u14,
+                random: std.Random,
+            },
+            node: union(enum) {
+                raw: u48,
+                random: std.Random,
+            },
         },
         v7: struct {
-            unix_ts_ms: ?u48 = null,
+            unix_ts_ms: union(enum) {
+                raw: u48,
+                timestamp: std.Io.Timestamp,
+            },
+            rng: std.Random,
         },
         v8: packed union {
             custom: u122,
-            part: packed struct(u122) {
+            parts: packed struct(u122) {
                 a: u48,
                 b: u12,
                 c: u62,
@@ -297,10 +316,15 @@ pub const UUID = packed union {
     pub fn new(options: NewOptions) UUID {
         switch (options) {
             .v1 => |v| {
-                const time = v.time orelse v1v6Time.now();
-                const clock_seq = v.clock_seq orelse std.crypto.random.int(u14);
-                const node = v.node orelse (std.crypto.random.int(u48) | 0x1000_0000_0000);
-
+                const time = v.time;
+                const clock_seq = switch (v.clock_seq) {
+                    .raw => |raw| raw,
+                    .random => |rng| rng.int(u14),
+                };
+                const node = switch (v.node) {
+                    .raw => |raw| raw,
+                    .random => |rng| rng.int(u48) | 0x1000_0000_0000,
+                };
                 return .{
                     .v1 = .{
                         .time_low = time.v1.low,
@@ -325,8 +349,8 @@ pub const UUID = packed union {
                 };
             },
 
-            .v4 => {
-                var id: UUID = .{ .id = std.crypto.random.int(u128) };
+            .v4 => |v| {
+                var id: UUID = .{ .id = v.rng.int(u128) };
                 id.v4.version = .v4;
                 id.v4.variant = 0b10;
                 return id;
@@ -344,11 +368,16 @@ pub const UUID = packed union {
             },
 
             .v6 => |v| {
-                const time = v.time orelse v1v6Time.now();
-                const clock_seq = v.clock_seq orelse std.crypto.random.int(u14);
+                const time = v.time;
+                const clock_seq = switch (v.clock_seq) {
+                    .raw => |raw| raw,
+                    .random => |rng| rng.int(u14),
+                };
                 // if we didn't get a node, create a random one and set the multicast bit
-                const node = v.node orelse (std.crypto.random.int(u48) | 0x100000000000);
-
+                const node = switch (v.node) {
+                    .raw => |raw| raw,
+                    .random => |rng| rng.int(u48) | 0x100000000000,
+                };
                 return .{
                     .v6 = .{
                         .time_low = time.v6.low,
@@ -361,8 +390,11 @@ pub const UUID = packed union {
             },
 
             .v7 => |v| {
-                var id: UUID = .{ .id = std.crypto.random.int(u128) };
-                id.v7.unix_ts_ms = v.unix_ts_ms orelse @intCast(std.time.milliTimestamp());
+                var id: UUID = .{ .id = v.rng.int(u128) };
+                id.v7.unix_ts_ms = switch (v.unix_ts_ms) {
+                    .raw => |raw| raw,
+                    .timestamp => |ts| @intCast(ts.toMilliseconds()),
+                };
                 id.v7.version = .v7;
                 id.v7.variant = 0b10;
                 return id;
@@ -371,9 +403,9 @@ pub const UUID = packed union {
             .v8 => |v| {
                 return .{
                     .v8 = .{
-                        .custom_a = v.part.a,
-                        .custom_b = v.part.b,
-                        .custom_c = v.part.c,
+                        .custom_a = v.parts.a,
+                        .custom_b = v.parts.b,
+                        .custom_c = v.parts.c,
                     },
                 };
             },
@@ -396,8 +428,8 @@ pub const UUID = packed union {
         return buf;
     }
 
-    pub fn serializeZ(self: UUID) [36:0]u8 {
-        var buf: [36:0]u8 = undefined;
+    pub fn serializeSentinel(self: UUID, comptime sentinel: u8) [36:sentinel]u8 {
+        var buf: [36:sentinel]u8 = undefined;
         _ = std.fmt.bufPrint(
             &buf,
             "{x:0>8}-{x:0>4}-{x:0>4}-{x:0>4}-{x:0>12}",
@@ -409,7 +441,7 @@ pub const UUID = packed union {
                 self.serializable.e,
             },
         ) catch unreachable;
-        buf[buf.len] = 0;
+        buf[buf.len] = sentinel;
         return buf;
     }
 
@@ -444,8 +476,8 @@ pub const UUID = packed union {
         return buf;
     }
 
-    pub fn serializeUrnZ(self: UUID) [45:0]u8 {
-        var buf: [45:0]u8 = undefined;
+    pub fn serializeUrnSentinel(self: UUID, comptime sentinel: u8) [45:sentinel]u8 {
+        var buf: [45:sentinel]u8 = undefined;
         @memcpy(buf[0..9], "urn:uuid:");
         _ = std.fmt.bufPrint(
             buf[9..],
@@ -458,7 +490,7 @@ pub const UUID = packed union {
                 self.serializable.e,
             },
         ) catch unreachable;
-        buf[buf.len] = 0;
+        buf[buf.len] = sentinel;
         return buf;
     }
 
@@ -470,14 +502,27 @@ pub const UUID = packed union {
 };
 
 test "uuid test 1" {
-    const id1: UUID = .new(.v4);
+    const rng_impl: std.Random.IoSource = .{ .io = std.testing.io };
+    const rng = rng_impl.interface();
+    const id1: UUID = .new(.{ .v4 = .{ .rng = rng } });
     const str = id1.serialize();
     const id2 = try UUID.deserialize(&str);
     try std.testing.expectEqual(id2.id, id1.id);
 }
 
 test "uuid test 2" {
-    const id1: UUID = .new(.{ .v7 = .{} });
+    const rng_impl: std.Random.IoSource = .{ .io = std.testing.io };
+    const rng = rng_impl.interface();
+    const id1: UUID = .new(
+        .{
+            .v7 = .{
+                .unix_ts_ms = .{
+                    .timestamp = .now(std.testing.io, .real),
+                },
+                .rng = rng,
+            },
+        },
+    );
     const str = id1.serialize();
     const id2 = try UUID.deserialize(&str);
     try std.testing.expectEqual(id2.id, id1.id);
@@ -488,11 +533,11 @@ test "uuid test 3" {
         // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv1-value
         const id: UUID = .{
             .v1 = .{
-                .time_low = 0xC232AB00,
+                .time_low = 0xc232ab00,
                 .time_mid = 0x9414,
-                .time_high = 0x1EC,
-                .clock_seq = 0x33C8,
-                .node = 0x9F6BDECED846,
+                .time_high = 0x1ec,
+                .clock_seq = 0x33c8,
+                .node = 0x9f6bdeced846,
             },
         };
 
@@ -501,7 +546,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("c232ab00-9414-11ec-b3c8-9f6bdeced846", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "c232ab00-9414-11ec-b3c8-9f6bdeced846", &str);
         }
     }
@@ -512,10 +557,14 @@ test "uuid test 3" {
             .{
                 .v1 = .{
                     .time = .{
-                        .raw = 0x1EC9414C232AB00,
+                        .raw = 0x1ec9414c232ab00,
                     },
-                    .clock_seq = 0x33C8,
-                    .node = 0x9F6BDECED846,
+                    .clock_seq = .{
+                        .raw = 0x33C8,
+                    },
+                    .node = .{
+                        .raw = 0x9f6bdeced846,
+                    },
                 },
             },
         );
@@ -528,7 +577,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("c232ab00-9414-11ec-b3c8-9f6bdeced846", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "c232ab00-9414-11ec-b3c8-9f6bdeced846", &str);
         }
     }
@@ -552,7 +601,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("5df41881-3aed-3515-88a7-2f4a814cf09e", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "5df41881-3aed-3515-88a7-2f4a814cf09e", &str);
         }
     }
@@ -574,7 +623,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("5df41881-3aed-3515-88a7-2f4a814cf09e", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "5df41881-3aed-3515-88a7-2f4a814cf09e", &str);
         }
     }
@@ -597,7 +646,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("919108f7-52d1-4320-9bac-f847db4148a8", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "919108f7-52d1-4320-9bac-f847db4148a8", &str);
         }
     }
@@ -620,7 +669,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("2ed6657d-e927-568b-95e1-2665a8aea6a2", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "2ed6657d-e927-568b-95e1-2665a8aea6a2", &str);
         }
     }
@@ -643,7 +692,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("2ed6657d-e927-568b-95e1-2665a8aea6a2", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "2ed6657d-e927-568b-95e1-2665a8aea6a2", &str);
         }
     }
@@ -652,11 +701,11 @@ test "uuid test 3" {
         // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv6-value
         const id: UUID = .{
             .v6 = .{
-                .time_high = 0x1EC9414C,
-                .time_mid = 0x232A,
-                .time_low = 0xB00,
-                .clock_seq = 0x33C8,
-                .node = 0x9F6BDECED846,
+                .time_high = 0x1ec9414c,
+                .time_mid = 0x232a,
+                .time_low = 0xb00,
+                .clock_seq = 0x33c8,
+                .node = 0x9f6bdeced846,
             },
         };
 
@@ -668,7 +717,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("1ec9414c-232a-6b00-b3c8-9f6bdeced846", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "1ec9414c-232a-6b00-b3c8-9f6bdeced846", &str);
         }
     }
@@ -677,9 +726,9 @@ test "uuid test 3" {
         // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv7-value
         const id: UUID = .{
             .v7 = .{
-                .unix_ts_ms = 0x017F22E279B0,
-                .rand_a = 0xCC3,
-                .rand_b = 0x18C4DC0C0C07398F,
+                .unix_ts_ms = 0x017f22e279b0,
+                .rand_a = 0xcc3,
+                .rand_b = 0x18c4dc0c0c07398f,
             },
         };
 
@@ -691,7 +740,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("017f22e2-79b0-7cc3-98c4-dc0c0c07398f", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "017f22e2-79b0-7cc3-98c4-dc0c0c07398f", &str);
         }
     }
@@ -700,9 +749,9 @@ test "uuid test 3" {
         // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv8-value-t
         const id: UUID = .{
             .v8 = .{
-                .custom_a = 0x2489E9AD2EE2,
-                .custom_b = 0xE00,
-                .custom_c = 0x0EC932D5F69181C0,
+                .custom_a = 0x2489e9ad2ee2,
+                .custom_b = 0xe00,
+                .custom_c = 0x0ec932d5f69181c0,
             },
         };
 
@@ -714,7 +763,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("2489e9ad-2ee2-8e00-8ec9-32d5f69181c0", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "2489e9ad-2ee2-8e00-8ec9-32d5f69181c0", &str);
         }
     }
@@ -738,7 +787,7 @@ test "uuid test 3" {
             try std.testing.expectEqualStrings("5c146b14-3c52-8afd-938a-375d0df1fbf6", &str);
         }
         {
-            const str = id.serializeZ();
+            const str = id.serializeSentinel(0);
             try std.testing.expectEqualSentinel(u8, 0, "5c146b14-3c52-8afd-938a-375d0df1fbf6", &str);
         }
     }
