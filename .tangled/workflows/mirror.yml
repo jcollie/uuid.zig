@@ -28,8 +28,6 @@ steps:
 
   - name: Configure SSH & Git
     command: |
-      echo $HOME
-      pwd
       mkdir /tangled/home/.ssh
       chmod 0700 /tangled/home/.ssh
       echo "$GITHUB_DEPLOY_KEY" > /tangled/home/.ssh/github_deploy_key
@@ -46,6 +44,5 @@ steps:
   - name: Push to GitHub
     command: |
       git fetch --unshallow origin main
-      git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
-      git push github main
+      git push github origin/main:main
