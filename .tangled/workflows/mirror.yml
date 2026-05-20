@@ -27,18 +27,19 @@ steps:
     command: |
       echo $HOME
       pwd
-      mkdir ~/.ssh
-      chmod 0700 ~/.ssh
-      echo "$GITHUB_DEPLOY_KEY" > ~/.ssh/github_deploy_key
+      mkdir /tangled/home/ssh
+      chmod 0700 /tangled/home/ssh
+      echo "$GITHUB_DEPLOY_KEY" > /tangled/home/ssh/github_deploy_key
       chmod 0600 ~/.ssh/github_deploy_key
-      echo "$GITHUB_KNOWN_HOSTS" > ~/.ssh/github_known_hosts
-      chmod 0600 ~/.ssh/github_known_hosts
-      echo > ~/.ssh/config << EOF
-      Host github.com
-        LogLevel DEBUG
-        IdentityFile ~/.ssh/github_deploy_key
-        UserKnownHostsFile ~/.ssh/github_known_hosts
-      EOF
+      echo "$GITHUB_KNOWN_HOSTS" > /tangled/home/ssh/github_known_hosts
+      chmod 0600 /tangled/home/ssh/github_known_hosts
+      # echo > ~/.ssh/config << EOF
+      # Host github.com
+      #   LogLevel DEBUG
+      #   IdentityFile /tangled/home/ssh/github_deploy_key
+      #   UserKnownHostsFile /tangled/home/ssh/github_known_hosts
+      # EOF
+      git config --global core.sshCommand "ssh -v -o IdentityFile=/tangled/home/ssh/github_deploy_key -o UserKnownHostsFile=/tangled/home/ssh/github_known_hosts"
 
   - name: Push to GitHub
     command: |
