@@ -25,6 +25,8 @@ steps:
 
   - name: Configure SSH
     command: |
+      echo $HOME
+      pwd
       mkdir ~/.ssh
       chmod 0700 ~/.ssh
       echo "$GITHUB_DEPLOY_KEY" > ~/.ssh/github_deploy_key
