@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: © 2025 Jeffrey C. Ollie
+# SPDX-License-Identifier: MIT
+
+when:
+  - event:
+      - push
+    branch:
+      - main
+  - event:
+      - manual
+
+engine: nixery
+
+dependencies:
+  nixpkgs:
+    - openssh
+
+environment:
+  TERM: "dumb"
+  NO_COLOR: "true"
+
+steps:
+  - name: Configure SSH
+    command: |
+      mkdir ~/.ssh
+      chmod 0700 ~/.ssh
+      echo "$GITHUB_DEPLOY_KEY" > .ssh/github_deploy_key
+      chmod 0600 ~/.ssh/github_deploy_key
+      echo > ~/.ssh/config << EOF
+      Host github.com
+        IdentityFile ~/.ssh/github_deploy_key
+      EOF
+
+  - name: Push to GitHub
+    command: |
+      git remote add github git@github.com:jcollie/uuid.zig.git
+      git push github main
