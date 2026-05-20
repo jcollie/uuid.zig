@@ -45,7 +45,7 @@ steps:
 
   - name: Push to GitHub
     command: |
-      git fetch origin main
+      git fetch --unshallow origin main
       git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
       git push github main
