@@ -34,13 +34,10 @@ steps:
       chmod 0700 /tangled/home/.ssh
       echo "$GITHUB_DEPLOY_KEY" > /tangled/home/.ssh/github_deploy_key
       chmod 0600 /tangled/home/.ssh/github_deploy_key
-      ls -l /tangled/home/.ssh/github_deploy_key
-      ssh-keygen -l -E sha256 -f /tangled/home/.ssh/github_deploy_key
       echo "$GITHUB_KNOWN_HOSTS" >> /tangled/home/.ssh/known_hosts
       chmod 0600 /tangled/home/.ssh/known_hosts
       cat > /tangled/home/.ssh/config <<EOF
       Host github.com
-        LogLevel DEBUG
         IdentitiesOnly yes
         IdentityFile /tangled/home/.ssh/github_deploy_key
       EOF
@@ -49,5 +46,6 @@ steps:
   - name: Push to GitHub
     command: |
       git fetch origin main
+      git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
-      git push github origin/main:main
+      git push github main
