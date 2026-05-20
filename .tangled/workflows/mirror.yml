@@ -33,6 +33,7 @@ steps:
       chmod 0600 ~/.ssh/github_known_hosts
       echo > ~/.ssh/config << EOF
       Host github.com
+        LogLevel DEBUG
         IdentityFile ~/.ssh/github_deploy_key
         UserKnownHostsFile ~/.ssh/github_known_hosts
       EOF
@@ -41,4 +42,4 @@ steps:
     command: |
       git fetch --depth=1 origin main
       git remote add github git@github.com:jcollie/uuid.zig.git
-      git push github origin/main
+      git push github origin/main:main
