@@ -20,6 +20,9 @@ environment:
   NO_COLOR: "true"
 
 steps:
+  - name: Fix root user
+    command: echo "root:x:0:0:root:/root:/bin/sh" >> /etc/passwd
+
   - name: Configure SSH
     command: |
       mkdir ~/.ssh
