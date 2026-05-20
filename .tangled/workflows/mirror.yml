@@ -11,6 +11,9 @@ when:
 
 engine: nixery
 
+clone:
+  depth: 0
+
 dependencies:
   nixpkgs:
     - openssh
@@ -46,6 +49,5 @@ steps:
   - name: Push to GitHub
     command: |
       git fetch origin main
-      git switch main
       git remote add github git@github.com:jcollie/uuid.zig.git
-      git push --force github main
+      git push github origin/main:main
