@@ -11,5 +11,5 @@ pub fn main(init: std.process.Init) void {
         },
     });
 
-    std.debug.print("{s}\n", .{uuid.serialize()});
+    std.debug.print("{f}\n", .{uuid});
 }

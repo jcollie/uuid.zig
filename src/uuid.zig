@@ -515,6 +515,13 @@ pub const UUID = packed union {
         if (!std.mem.eql(u8, "urn:uuid:", urn[0..9])) return error.MalformedUUID;
         return try deserialize(urn[9..]);
     }
+
+    pub fn format(self: UUID, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print(
+            "{[a]x:0>8}-{[b]x:0>4}-{[c]x:0>4}-{[d]x:0>4}-{[e]x:0>12}",
+            self.serializable,
+        );
+    }
 };
 
 test "uuid test 1" {
