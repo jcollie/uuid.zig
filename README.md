@@ -6,6 +6,9 @@
 A Zig library for generating, parsing, and formatting
 [RFC 9562](https://www.rfc-editor.org/rfc/rfc9562.html) UUIDs.
 
+The API documentation, generated from the doc comments in the source,
+is published at <https://jeff.jcollie.page/zig-uuid/>.
+
 ## Features
 
 - Generate version 1, 2, 3, 4, 5, 6, 7, and 8 UUIDs
@@ -30,7 +33,7 @@ Zig 0.16.0 or later.
 Add the dependency to your project:
 
 ```sh
-zig fetch --save git+https://git.ocjtech.us/jeff/zig-uuid
+zig fetch --save git+https://git.jcollie.dev/jeff/zig-uuid
 ```
 
 Then in your `build.zig`:

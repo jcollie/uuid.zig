@@ -41,4 +41,4 @@ jobs:
         run: nix develop .#default -c zig build docs
 
       - name: Publish docs
-        run: nix develop .#default -c git-pages-cli https://jeff.ocj.page/zig-uuid/ --server ocj.page --token ${{ forge.token }} --upload-dir zig-out/docs
+        run: nix develop .#default -c git-pages-cli https://jeff.jcollie.page/zig-uuid/ --server jcollie.page --token ${{ forge.token }} --upload-dir zig-out/docs
