@@ -26,7 +26,7 @@ is published at <https://jeff.jcollie.page/zig-uuid/>.
 
 ## Requirements
 
-Zig 0.16.0 or later.
+Zig 0.17.0.
 
 ## Installation
 

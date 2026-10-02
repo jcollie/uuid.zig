@@ -503,7 +503,7 @@ pub const UUID = packed union {
                         .local_id = v.local_id,
                         .time_mid = time.v2.mid,
                         .time_high = time.v2.high,
-                        .local_domain = @intFromEnum(v.local_domain),
+                        .local_domain = @backingInt(v.local_domain),
                         .clock_seq_hi = clock_seq,
                         .node = node,
                     },
@@ -773,7 +773,7 @@ test "uuid test 3" {
                 .time_mid = 0x9414,
                 .time_high = 0x1ec,
                 .clock_seq_hi = 0x33,
-                .local_domain = @intFromEnum(UUID.LocalDomain.person),
+                .local_domain = @backingInt(UUID.LocalDomain.person),
                 .node = 0x9f6bdeced846,
             },
         };

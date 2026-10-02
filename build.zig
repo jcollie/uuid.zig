@@ -40,9 +40,7 @@ pub fn build(b: *std.Build) void {
 
         run_cmd.step.dependOn(b.getInstallStep());
 
-        if (b.args) |args| {
-            run_cmd.addArgs(args);
-        }
+        run_cmd.addPassthruArgs();
     }
 
     {
