@@ -24,9 +24,30 @@ is published at <https://jeff.jcollie.page/zig-uuid/>.
   `meta`
 - No allocations, no dependencies
 
+## Source
+
+The canonical repository is <https://git.jcollie.dev/jeff/zig-uuid>:
+
+```sh
+git clone https://git.jcollie.dev/jeff/zig-uuid.git
+```
+
+It is also on the Radicle network, where the repository's identifier is
+
+```
+rad:z3uZSgLiCAhT3BkqgaaoF1SKvye6s
+```
+
+and `rad clone rad:z3uZSgLiCAhT3BkqgaaoF1SKvye6s` fetches it from any
+node that seeds it, needing no account and no forge. A further copy is
+mirrored to <https://tangled.org/jcollie.dev/zig-uuid>. All three carry
+the same history on `main`; the Forgejo one is where the tests and the
+documentation build run.
+
 ## Requirements
 
-Zig 0.17.0.
+Zig 0.17.0. The development shell takes the official release binary
+from [zig-overlay](https://git.jcollie.dev/jeff/zig-overlay).
 
 ## Installation
 
