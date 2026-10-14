@@ -170,6 +170,13 @@ zig build docs   # build the API docs into zig-out/docs
 zig build bench  # run the benchmarks (always ReleaseFast)
 ```
 
+## Contributing
+
+Report issues and send pull requests to the Tangled mirror,
+<https://tangled.org/jcollie.dev/zig-uuid>.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers setting up, the checks a change
+has to pass, and how the code is laid out.
+
 ## License
 
 MIT. This project follows the [REUSE](https://reuse.software/)
