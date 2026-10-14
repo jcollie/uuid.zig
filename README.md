@@ -15,10 +15,17 @@ is published at <https://jeff.jcollie.page/zig-uuid/>.
 - The special `nil` (all zeros) and `max` (all ones) UUIDs
 - The well-known name space IDs (DNS, URL, OID, X.500) for creating
   v3 and v5 UUIDs
+- Create v3 and v5 UUIDs straight from a name space and a name with
+  `UUID.fromName`, which does the hashing; the name can be given in parts
 - Parse and format the standard string representation
   (`c232ab00-9414-11ec-b3c8-9f6bdeced846`) and the URN representation
   (`urn:uuid:c232ab00-9414-11ec-b3c8-9f6bdeced846`)
-- Implements `format` so UUIDs can be printed directly with `{f}`
+- Parse and format the Windows registry form of a GUID — upper case, in
+  braces (`{C232AB00-9414-11EC-B3C8-9F6BDECED846}`) — as Windows
+  Installer and WiX use it; the hex case and the braces can also be
+  chosen separately
+- Implements `format` so UUIDs can be printed directly with `{f}`, and
+  `fmt` to print them in any of the other forms
 - `UUID` is a packed union that is exactly 128 bits — compare UUIDs
   with `a.id == b.id`, or access the version and variant fields via
   `meta`
@@ -100,6 +107,20 @@ const uuid: UUID = .new(.{
 });
 ```
 
+Generate a name-based (version 5) UUID. The digest is taken over the
+name space and then each part of the name in turn, so the result is the
+same as hashing the parts joined together:
+
+```zig
+const uuid: UUID = .fromName(.v5, .namespace_dns, &.{"www.example.com"});
+// 2ed6657d-e927-568b-95e1-2665a8aea6a2
+
+const component: UUID = .fromName(.v5, my_namespace, &.{ "component/", name });
+```
+
+`.v3` uses MD5 instead of SHA-1. If you already have the digest, pass it
+to `UUID.new` in the `hash` field of the `.v3` or `.v5` options.
+
 Parse and format:
 
 ```zig
@@ -108,8 +129,18 @@ const str: [36]u8 = uuid.serialize();
 const urn: [45]u8 = uuid.serializeUrn();
 ```
 
-Note that for version 3 and 5 UUIDs you compute the MD5 or SHA-1 hash
-yourself and pass the digest in via the `hash` field. Version 2 (DCE
+`deserialize` also accepts the braced form, in either case, and rejects
+a brace without its partner. The Windows registry form is available
+directly, or by choosing the case and the braces yourself:
+
+```zig
+const guid = try UUID.deserialize("{6BA7B810-9DAD-11D1-80B4-00C04FD430C8}");
+const reg: [38]u8 = guid.serializeRegistry(); // {6BA7B810-9DAD-11D1-80B4-00C04FD430C8}
+const upper: [36]u8 = guid.serializeOptions(.{ .case = .upper });
+std.debug.print("{f}\n", .{guid.fmt(.registry)});
+```
+
+Version 2 (DCE
 Security) UUIDs store only 28 bits of timestamp and 6 bits of clock
 sequence, so UUIDs generated within the same ~7 minute window for the
 same local ID collide easily — prefer another version unless you

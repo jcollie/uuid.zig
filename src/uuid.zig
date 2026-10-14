@@ -4,8 +4,9 @@
 //! Generate, parse, and format RFC 9562 UUIDs.
 //!
 //! Everything lives on the `UUID` type: `UUID.new` creates a UUID of any
-//! version from caller-supplied inputs, `UUID.deserialize` and
-//! `UUID.deserializeUrn` parse the two standard string forms, and
+//! version from caller-supplied inputs, `UUID.fromName` hashes a name into
+//! a v3 or v5 UUID, `UUID.deserialize` and `UUID.deserializeUrn` parse the
+//! standard string forms (and the braced form of Microsoft GUIDs), and
 //! `UUID.serialize` and friends produce them again.
 //!
 //! https://www.rfc-editor.org/rfc/rfc9562.html
@@ -584,13 +585,65 @@ pub const UUID = packed union {
         }
     }
 
+    /// Create a name-based UUID: version 3 (MD5) or version 5 (SHA-1). The
+    /// digest is taken over the name space UUID in network byte order
+    /// followed by each of `name_parts` in turn, so a structured name can be
+    /// hashed without first joining it into one buffer; the result is the
+    /// same as hashing the parts concatenated. Prefer v5 for new names.
+    /// https://www.rfc-editor.org/rfc/rfc9562.html#name-name-based-uuid-generation
+    pub fn fromName(comptime version: Version, namespace: UUID, name_parts: []const []const u8) UUID {
+        const Hash = switch (version) {
+            .v3 => std.crypto.hash.Md5,
+            .v5 => std.crypto.hash.Sha1,
+            else => @compileError("only v3 and v5 UUIDs are name-based"),
+        };
+        var hash = Hash.init(.{});
+        hash.update(&namespace.toBytes());
+        for (name_parts) |part| hash.update(part);
+        var digest: [Hash.digest_length]u8 = undefined;
+        hash.final(&digest);
+        return switch (version) {
+            .v3 => .new(.{ .v3 = .{ .hash = &digest } }),
+            .v5 => .new(.{ .v5 = .{ .hash = &digest } }),
+            else => comptime unreachable,
+        };
+    }
+
+    /// The case of the hex digits in a serialized UUID.
+    pub const Case = enum { lower, upper };
+
+    /// How `serializeOptions` and `fmt` write a UUID.
+    pub const SerializeOptions = struct {
+        /// The case of the hex digits. RFC 9562 output is lower case.
+        case: Case = .lower,
+        /// Wrap the UUID in curly braces, as Microsoft's GUID tools do.
+        braces: bool = false,
+
+        /// The RFC 9562 form: "c232ab00-9414-11ec-b3c8-9f6bdeced846".
+        pub const standard: SerializeOptions = .{};
+
+        /// The Windows registry form of a GUID, upper case and in braces:
+        /// "{C232AB00-9414-11EC-B3C8-9F6BDECED846}". It is the form Windows
+        /// Installer requires for every GUID in an MSI database.
+        pub const registry: SerializeOptions = .{ .case = .upper, .braces = true };
+
+        /// The length of a UUID serialized with these options.
+        pub fn len(comptime options: SerializeOptions) usize {
+            return if (options.braces) 38 else 36;
+        }
+    };
+
     /// Write the standard string representation into `buf`.
-    fn writeHex(self: UUID, buf: *[36]u8) void {
+    fn writeHex(self: UUID, buf: *[36]u8, comptime case: Case) void {
+        const digits = switch (case) {
+            .lower => hex_encode,
+            .upper => "0123456789ABCDEF",
+        };
         const bytes = self.toBytes();
         var i: usize = 0;
         for (bytes, 0..) |b, j| {
-            buf[i] = hex_encode[b >> 4];
-            buf[i + 1] = hex_encode[b & 0x0f];
+            buf[i] = digits[b >> 4];
+            buf[i + 1] = digits[b & 0x0f];
             i += 2;
             switch (j) {
                 3, 5, 7, 9 => {
@@ -602,12 +655,23 @@ pub const UUID = packed union {
         }
     }
 
+    /// Write the representation chosen by `options` into `buf`.
+    fn writeOptions(self: UUID, comptime options: SerializeOptions, buf: *[options.len()]u8) void {
+        if (options.braces) {
+            buf[0] = '{';
+            self.writeHex(buf[1..37], options.case);
+            buf[37] = '}';
+        } else {
+            self.writeHex(buf, options.case);
+        }
+    }
+
     /// Return the standard 36-character string representation, e.g.
     /// "c232ab00-9414-11ec-b3c8-9f6bdeced846". Hex digits are lower case.
     /// https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-format
     pub fn serialize(self: UUID) [36]u8 {
         var buf: [36]u8 = undefined;
-        self.writeHex(&buf);
+        self.writeHex(&buf, .lower);
         return buf;
     }
 
@@ -615,18 +679,39 @@ pub const UUID = packed union {
     /// that expect e.g. a null-terminated string.
     pub fn serializeSentinel(self: UUID, comptime sentinel: u8) [36:sentinel]u8 {
         var buf: [36:sentinel]u8 = undefined;
-        self.writeHex(buf[0..36]);
+        self.writeHex(buf[0..36], .lower);
         buf[buf.len] = sentinel;
         return buf;
     }
 
-    /// Parse the standard 36-character string representation. Both upper and
-    /// lower case hex digits are accepted. No version or variant checking is
-    /// done; inspect `meta` afterwards if the UUID must be of a particular
-    /// kind.
+    /// Return the string representation chosen by `options`: 36 characters,
+    /// or 38 with braces. `serializeOptions(.registry)` gives the Windows
+    /// registry form, "{C232AB00-9414-11EC-B3C8-9F6BDECED846}".
+    pub fn serializeOptions(self: UUID, comptime options: SerializeOptions) [options.len()]u8 {
+        var buf: [options.len()]u8 = undefined;
+        self.writeOptions(options, &buf);
+        return buf;
+    }
+
+    /// Return the Windows registry form of the UUID, upper case and in
+    /// braces: "{C232AB00-9414-11EC-B3C8-9F6BDECED846}".
+    pub fn serializeRegistry(self: UUID) [38]u8 {
+        return self.serializeOptions(.registry);
+    }
+
+    /// Parse the standard 36-character string representation, or the
+    /// 38-character form in curly braces that Microsoft's tools write for
+    /// GUIDs, e.g. "{C232AB00-9414-11EC-B3C8-9F6BDECED846}". Both upper and
+    /// lower case hex digits are accepted; braces must come as a pair. No
+    /// version or variant checking is done; inspect `meta` afterwards if the
+    /// UUID must be of a particular kind.
     /// https://www.rfc-editor.org/rfc/rfc9562.html#name-uuid-format
-    pub fn deserialize(str: []const u8) Errors!UUID {
-        if (str.len != 36) return error.MalformedUUID;
+    pub fn deserialize(input: []const u8) Errors!UUID {
+        const str = switch (input.len) {
+            36 => input,
+            38 => if (input[0] == '{' and input[37] == '}') input[1..37] else return error.MalformedUUID,
+            else => return error.MalformedUUID,
+        };
         inline for (.{ 8, 13, 18, 23 }) |i| if (str[i] != '-') return error.MalformedUUID;
         var id: u128 = 0;
         var invalid: u8 = 0;
@@ -649,7 +734,7 @@ pub const UUID = packed union {
     pub fn serializeUrn(self: UUID) [45]u8 {
         var buf: [45]u8 = undefined;
         @memcpy(buf[0..9], "urn:uuid:");
-        self.writeHex(buf[9..45]);
+        self.writeHex(buf[9..45], .lower);
         return buf;
     }
 
@@ -658,7 +743,7 @@ pub const UUID = packed union {
     pub fn serializeUrnSentinel(self: UUID, comptime sentinel: u8) [45:sentinel]u8 {
         var buf: [45:sentinel]u8 = undefined;
         @memcpy(buf[0..9], "urn:uuid:");
-        self.writeHex(buf[9..45]);
+        self.writeHex(buf[9..45], .lower);
         buf[buf.len] = sentinel;
         return buf;
     }
@@ -670,6 +755,25 @@ pub const UUID = packed union {
         if (urn.len != 45) return error.MalformedUUID;
         if (!std.mem.eql(u8, "urn:uuid:", urn[0..9])) return error.MalformedUUID;
         return try deserialize(urn[9..]);
+    }
+
+    /// A UUID paired with the options to write it with; see `fmt`.
+    pub fn Formatter(comptime options: SerializeOptions) type {
+        return struct {
+            uuid: UUID,
+
+            pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                const buf = self.uuid.serializeOptions(options);
+                try writer.writeAll(&buf);
+            }
+        };
+    }
+
+    /// Return a value that prints the UUID with the given options through
+    /// the `{f}` format specifier, e.g. `fmt(.registry)` for the Windows
+    /// registry form.
+    pub fn fmt(self: UUID, comptime options: SerializeOptions) Formatter(options) {
+        return .{ .uuid = self };
     }
 
     /// Write the standard string representation, letting a UUID be printed
@@ -1274,4 +1378,72 @@ test "uuid test 4" {
         try std.testing.expectEqual(case.id.id, id3.id);
         try std.testing.expectEqual(id1.id, id3.id);
     }
+}
+
+test "fromName matches the RFC 9562 v3 and v5 examples" {
+    // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv3-value
+    // https://www.rfc-editor.org/rfc/rfc9562.html#name-example-of-a-uuidv5-value
+    const v3: UUID = .fromName(.v3, .namespace_dns, &.{"www.example.com"});
+    try std.testing.expectEqualStrings("5df41881-3aed-3515-88a7-2f4a814cf09e", &v3.serialize());
+    const v5: UUID = .fromName(.v5, .namespace_dns, &.{"www.example.com"});
+    try std.testing.expectEqualStrings("2ed6657d-e927-568b-95e1-2665a8aea6a2", &v5.serialize());
+}
+
+test "fromName hashes its parts as if concatenated" {
+    const whole: UUID = .fromName(.v5, .namespace_dns, &.{"www.example.com"});
+    const split: UUID = .fromName(.v5, .namespace_dns, &.{ "www.", "", "example", ".com" });
+    try std.testing.expectEqual(whole.id, split.id);
+    const none: UUID = .fromName(.v5, .namespace_dns, &.{});
+    const empty: UUID = .fromName(.v5, .namespace_dns, &.{""});
+    try std.testing.expectEqual(none.id, empty.id);
+}
+
+test "serializeOptions" {
+    const id = UUID.namespace_dns;
+    try std.testing.expectEqualStrings("6ba7b810-9dad-11d1-80b4-00c04fd430c8", &id.serializeOptions(.standard));
+    try std.testing.expectEqualStrings("6BA7B810-9DAD-11D1-80B4-00C04FD430C8", &id.serializeOptions(.{ .case = .upper }));
+    try std.testing.expectEqualStrings("{6ba7b810-9dad-11d1-80b4-00c04fd430c8}", &id.serializeOptions(.{ .braces = true }));
+    try std.testing.expectEqualStrings("{6BA7B810-9DAD-11D1-80B4-00C04FD430C8}", &id.serializeOptions(.registry));
+    try std.testing.expectEqualStrings("{6BA7B810-9DAD-11D1-80B4-00C04FD430C8}", &id.serializeRegistry());
+}
+
+test "fmt prints with the chosen options" {
+    var buf: [80]u8 = undefined;
+    const id = UUID.namespace_dns;
+    try std.testing.expectEqualStrings(
+        "{6BA7B810-9DAD-11D1-80B4-00C04FD430C8} 6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+        try std.fmt.bufPrint(&buf, "{f} {f}", .{ id.fmt(.registry), id.fmt(.standard) }),
+    );
+}
+
+test "deserialize accepts the braced form in either case" {
+    const want = UUID.namespace_dns.id;
+    for ([_][]const u8{
+        "{6BA7B810-9DAD-11D1-80B4-00C04FD430C8}",
+        "{6ba7b810-9dad-11d1-80b4-00c04fd430c8}",
+        "{6Ba7B810-9dAd-11D1-80b4-00c04Fd430C8}",
+    }) |str| {
+        const id = try UUID.deserialize(str);
+        try std.testing.expectEqual(want, id.id);
+    }
+    const round = try UUID.deserialize(&UUID.namespace_url.serializeRegistry());
+    try std.testing.expectEqual(UUID.namespace_url.id, round.id);
+}
+
+test "deserialize rejects unpaired or misplaced braces" {
+    for ([_][]const u8{
+        "{6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+        "6ba7b810-9dad-11d1-80b4-00c04fd430c8}",
+        "{6ba7b810-9dad-11d1-80b4-00c04fd430c8)",
+        "(6ba7b810-9dad-11d1-80b4-00c04fd430c8}",
+        "}6ba7b810-9dad-11d1-80b4-00c04fd430c8{",
+        "{6ba7b810-9dad-11d1-80b4-00c04fd430c8}}",
+        "{{6ba7b810-9dad-11d1-80b4-00c04fd430c8}",
+        "{6ba7b8109dad-11d1-80b4-00c04fd430c8}",
+        "{}",
+        "urn:uuid:{6ba7b810-9dad-11d1-80b4-00c04fd430c8}",
+    }) |str| {
+        try std.testing.expectError(error.MalformedUUID, UUID.deserialize(str));
+    }
+    try std.testing.expectError(error.MalformedUUID, UUID.deserializeUrn("urn:uuid:{6ba7b810-9dad-11d1-80b4-00c04fd430"));
 }
